@@ -1,0 +1,279 @@
+#!/bin/bash
+
+# PLOT STACK OF CARBON EMISSIONS HISTORIES (FLUX AND MASS)
+# CALCULATE MEANS AND SDS OF STACKS
+# CALCULATE TIME TO PEAK FLUX AND MASSES AT TIMES OF INTEREST
+
+OUT=./all_histories.ps
+
+N_HISTORIES=34
+N_START=1
+RAN_FILE=
+COPY_TO_DIR=
+
+gmt gmtset MAP_FRAME_TYPE plain
+gmt gmtset MAP_FRAME_PEN 0.5p,black
+gmt gmtset MAP_TICK_LENGTH_PRIMARY 0.1c
+gmt gmtset MAP_TICK_LENGTH_SECONDARY 0.05c
+gmt gmtset MAP_LABEL_OFFSET 0.3c
+gmt gmtset FONT_LABEL 12p
+gmt gmtset FONT_ANNOT_PRIMARY 10p
+
+
+
+
+XFRAME=10
+YFRAME=6.18
+TMIN=0
+TMAX=100
+QMIN=0.05
+QMAX=5
+
+
+#
+# FLUX
+#
+
+
+gmt psbasemap -R${TMIN}/${TMAX}/0/1.2 -JX${XFRAME}/${YFRAME} -Bxa50f10+l"Time after first sill (kyr)" -Bya0.5f0.1+l"Emissions Rate (Pg C yr@+-1@+)" -BWsN -K -P -X3 -Y22 > $OUT
+
+
+\rm tmp.max
+\rm tmp.max.1000
+
+N=$N_START
+while [ $N -le $N_HISTORIES ]; do
+
+# PLOT TRANSPARENT CURVE
+
+	awk '{print $1/1000, $2}' naip.model.$N > tmp.qt
+	gmt psxy tmp.qt -R -JX -W1p,black@90 -K -O >> $OUT
+		
+# FIND MAXIMUM FLUX, TIME TO MAX FLUX (UNFILTERED AND FILTERED)
+
+	gmtinfo tmp.qt -Eh >> tmp.max
+	gmt filter1d tmp.qt -Fb1 -E > tmp.qt.1000
+	gmtinfo tmp.qt.1000 -Eh >> tmp.max.1000
+
+	gmt psxy tmp.qt.1000 -R -JX -W1p,green@90 -K -O >> $OUT
+
+# SAVE DATA TO CALCULATE MEAN FILTERED CURVE
+
+	if [ $N -eq $N_START ]; then
+#		cp tmp.qt.1000 tmp.qt.all
+		cp tmp.qt tmp.qt.all
+	else
+#		join tmp.qt.all tmp.qt.1000 > tmp.1
+		join tmp.qt.all tmp.qt > tmp.1
+		cp tmp.1 tmp.qt.all
+	fi
+
+ 	let N=N+1
+done
+
+# MEAN FILTERED CURVE
+
+awk '{sum=0; sum2=0; for (i=2;i<=NF;i++){sum+=$i; sum2+=$i*$i}; mean=sum/(NF-1); print $1, mean, sqrt(sum2/(NF-1)-mean^2)}' tmp.qt.all > mean.qt
+gmt psxy mean.qt -R -JX -W1p,red -K -O >> $OUT
+awk '{print $1,$2+$3}' mean.qt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+awk '{print $1,$2-$3}' mean.qt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3i_mid.txt | \
+	gmt psxy -R -JX -W1p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3i_min.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3i_max.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+
+
+#echo "5.000 1.07" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+#echo "10.000 0.70" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+#echo "20.000 0.48" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+
+gmt psbasemap -R -JX -Bxa50f10+l"Time after first sill (kyr)" -Be -K -O >> $OUT
+
+# MEAN AND S.D. TIME TO PEAK 
+
+echo
+echo -n "Peak flux:  "
+awk '{sum+=$2; sumsq+=$2*$2; n++} END{mean=sum/n; meansq=sumsq/n; print mean, "±", sqrt(meansq-mean^2)}' tmp.max
+echo -n "Time to peak:  "
+awk '{sum+=$1; sumsq+=$1*$1; n++} END{mean=sum/n; meansq=sumsq/n; print mean, "±", sqrt(meansq-mean^2)}' tmp.max
+TIME_TO_PEAK=`awk '{sum+=$1; sumsq+=$1*$1; n++} END{mean=sum/n; meansq=sumsq/n; print mean}' tmp.max`
+echo -n "Peak filtered flux:  "
+awk '{sum+=$2; sumsq+=$2*$2; n++} END{mean=sum/n; meansq=sumsq/n; print mean, "±", sqrt(meansq-mean^2)}' tmp.max.1000
+echo -n "Time to peak filtered:  "
+awk '{sum+=$1; sumsq+=$1*$1; n++} END{mean=sum/n; meansq=sumsq/n; print mean, "±", sqrt(meansq-mean^2)}' tmp.max.1000
+echo
+
+# FIRST ATTEMPT TO AVOID DOUBLE COUNTING
+
+#	awk '{print $1/1000, $2}' ../naip.model.o1000 > tmp.qt
+#	gmt filter1d tmp.qt -Fb1 -E > tmp.qt.1000
+#	gmt psxy tmp.qt -R -JX -W1p,orange -K -O >> $OUT
+
+
+
+#
+# MASS
+#
+
+gmt psbasemap -R${TMIN}/${TMAX}/0/30 -JX -Bxa50f10+l"Time after first sill (kyr)" -Bya10f2+l"Cumulative Emissions (Eg C)" -BWesn -K -O -Y-7 >> $OUT
+
+N=$N_START
+while [ $N -le $N_HISTORIES ]; do
+
+	awk '{print $1/1000, $7/1000}' naip.model.$N > tmp.mt
+	gmt psxy tmp.mt -R -JX -W1p,black@90 -K -O >> $OUT
+
+# SAVE DATA TO CALCULATE MEAN FILTERED CURVE
+
+	if [ $N -eq 1 ]; then
+		cp tmp.mt tmp.mt.all
+	else
+		join tmp.mt.all tmp.mt > tmp.1
+		cp tmp.1 tmp.mt.all
+	fi
+
+ 	let N=N+1
+done
+
+# MEAN CURVE
+
+awk '{sum=0; sum2=0; for (i=2;i<=NF;i++){sum+=$i; sum2+=$i*$i}; mean=sum/(NF-1); print $1, mean, sqrt(sum2/(NF-1)-mean^2)}' tmp.mt.all > mean.mt
+gmt psxy mean.mt -R -JX -W1p,red -K -O >> $OUT
+awk '{print $1,$2+$3}' mean.mt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+awk '{print $1,$2-$3}' mean.mt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3j_mid.txt | \
+	gmt psxy -R -JX -W1p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3j_min.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3j_max.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+
+echo "5.000 3.75" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "10.000 4.69" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "20.000 6.14" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "50.000 13.007" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+
+echo "$TIME_TO_PEAK" > tmp.knot
+echo -n "Mass at peak time: "
+sample1d mean.mt -Ntmp.knot
+cat <<EOF > tmp.knot
+2
+5
+10
+EOF
+echo "Masses at times 2, 5, 10 kyr: "
+sample1d mean.mt -Ntmp.knot
+
+# FIRST ATTEMPT TO AVOID DOUBLE COUNTING
+
+#	awk '{print $1/1000, $7/1000}' ../naip.model.o1000 > tmp.mt
+#	gmt psxy tmp.mt.1000 -R -JX -W1p,orange -K -O >> $OUT
+
+
+
+#
+# MASS FRACTION CH4
+#
+
+gmt psbasemap -R${TMIN}/${TMAX}/0.5/1 -JX -Bxa50f10+l"Time after first sill (kyr)" -Bya0.5f0.1+l"Mass Fraction CH@-4@-" -BW -K -O -Y-7 >> $OUT
+
+N=$N_START
+while [ $N -le $N_HISTORIES ]; do
+	awk '{print $1/1000,$6}' naip.model.$N > tmp.xt
+	gmt psxy tmp.xt -R -JX -W1p,black@90 -K -O >> $OUT
+
+# SAVE DATA TO CALCULATE MEAN FILTERED CURVE
+
+	if [ $N -eq $N_START ]; then
+		cp tmp.xt tmp.xt.all
+	else
+		join tmp.xt.all tmp.xt > tmp.1
+		cp tmp.1 tmp.xt.all
+	fi
+
+ 	let N=N+1
+done
+
+# MEAN CURVE
+
+awk '{sum=0; sum2=0; for (i=2;i<=NF;i++){sum+=$i; sum2+=$i*$i}; mean=sum/(NF-1); print $1, mean, sqrt(sum2/(NF-1)-mean^2)}' tmp.xt.all > mean.xt
+gmt psxy mean.xt -R -JX -W1p,red -K -O >> $OUT
+awk '{print $1,$2+$3}' mean.xt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+awk '{print $1,$2-$3}' mean.xt | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+
+# FIRST ATTEMPT TO AVOID DOUBLE COUNTING
+
+#	awk '{print $1/1000, $6}' ../naip.model.o1000 > tmp.xt
+#	gmt psxy tmp.xt -R -JX -W1p,orange -K -O >> $OUT
+
+
+
+#
+# CARBON ISOTOPES
+#
+
+gmt psbasemap -R${TMIN}/${TMAX}/-40/0 -JX -Bxa50f10+l"Time after first sill (kyr)" -Bya10+l"@~d@~@+13@+C" -BE -K -O >> $OUT
+
+N=$N_START
+while [ $N -le $N_HISTORIES ]; do
+
+	awk '{if ($12 != 0.0) print $1/1000, $12}' naip.model.$N > tmp.ct
+	gmt psxy tmp.ct -R -JX -W1p,black@90 -K -O >> $OUT
+
+# SAVE DATA TO CALCULATE MEAN FILTERED CURVE
+
+	if [ $N -eq $N_START ]; then
+		cp tmp.ct tmp.ct.all
+	else
+		join tmp.ct.all tmp.ct > tmp.1
+		cp tmp.1 tmp.ct.all
+	fi
+
+ 	let N=N+1
+done
+
+# MEAN CURVE
+
+awk '{sum=0; sum2=0; for (i=2;i<=NF;i++){sum+=$i; sum2+=$i*$i}; mean=sum/(NF-1); print $1, mean, sqrt(sum2/(NF-1)-mean^2)}' tmp.ct.all > mean.ct
+gmt psxy mean.ct -R -JX -W1p,red -K -O >> $OUT
+awk '{print $1,$2+$3}' mean.ct | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+awk '{print $1,$2-$3}' mean.ct | \
+	gmt psxy -R -JX -W0.5p,pink,- -K -O >> $OUT
+
+
+#	awk '{print $1/1000, $12}' ../naip.model.o1000 > tmp.ct
+#	gmt psxy tmp.ct -R -JX -W1p,orange -K -O >> $OUT
+
+
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3l_mid.txt | \
+	gmt psxy -R -JX -W1p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3l_min.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+awk '{print 2*NR-2,$2; print 2*NR,$2}' ../gutjahr_3l_max.txt | \
+	gmt psxy -R -JX -W0.5p,cyan -K -O >> $OUT
+
+echo "5.000 -29.0" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "10.000 -26.3" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "20.000 -22.0" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+echo "50.000 -13.5" | gmt psxy -R -JX -W1p,green -Sc0.3c -K -O >> $OUT
+
+
+gmt psbasemap -R -JX -Bxa50f10+l"Time after first sill (kyr)" -BSn -O >> $OUT
+
+
+
+psconvert $OUT -Tf
+open "${OUT%.ps}.pdf"
+exit
+
