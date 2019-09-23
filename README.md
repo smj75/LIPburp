@@ -1,12 +1,12 @@
 # LIPburp
 
-Greenhouse gas emissions from repeated geological events within Large Igneous Provinces.
+** Greenhouse gas emissions from repeated geological events within Large Igneous Provinces. **
 
 The primary reference is, "Jones, S. M., Hoggett, M., Greene, S. E. & Dunkley Jones, T.,  Large Igneous Province thermogenic greenhouse gas flux could have initiated Paleocene-Eocene Thermal Maximum climate change, Nature Communications, in press Sept 2019," referred to below as Jea19.
 
 This archive contains the code that can be adapted to any LIP, and to any type of geological emissions events that can be represented using the tapered power law parameterisation.  See GitHub smj75/NAIPburp for results of using these scripts to estimate greenhouse gas emissions histories from the North Atlantic Igneous Sill province.  
 
-## *simulate_const_trec.sh
+## *simulate_const_trec.sh*
 
 Generates multiple carbon emissions histories for an LIP sill province, assuming constant t_repeat. 
 
